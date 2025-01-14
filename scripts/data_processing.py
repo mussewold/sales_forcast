@@ -1,96 +1,283 @@
-# scripts/data_processing.py
 import pandas as pd
+import numpy as np 
 import matplotlib.pyplot as plt
 import seaborn as sns
+import logging
 
-class DataProcessing:
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+# Load Data 
+def load_data():
+    ''' 
+    Function to Load Data from csv files
+
+    '''
+    logging.info("Loading data from file...")
+
+    file_train = '../data/train.csv'
+    file_store = '../data/store.csv'
+    file_test = '../data/test.csv'
+
+    # Read the files with low_memory=False
+    df_train = pd.read_csv(file_train, low_memory=False)
+    df_store = pd.read_csv(file_store, low_memory=False)
+    df_test = pd.read_csv(file_test, low_memory=False)
+
+    # Set pandas display options
+    pd.set_option('display.max_columns', None)
     
-    def __init__(self, test_data: pd.DataFrame, train_data: pd.DataFrame):
-        """
-        Initialize the DataProcessing class with the data.
+    logging.info(f"Data loaded ")
+    return df_train, df_test, df_store
 
-        Args:
-            data (pd.DataFrame): The input DataFrame to process.
-        """
-        self.train_data = train_data
-        self.test_data = test_data
+
+def df_description(dfs):
+    """
+    Loop over a list of DataFrames and print description.
+    
+    Parameters:
+    dfs (list): A list of pandas DataFrames.
+    """
+    # Set display options for better readability
+    pd.set_option('display.max_columns', None)  # Show all columns
+    pd.set_option('display.width', 1000)        # Increase width to avoid line breaks
+
+    for df_name, df in dfs:        
+        print(f"\n {df_name} Description:")
+        display(df.describe())
+        # print("\n" + "-"*50)  # Separator for readability
+
+
+def df_info(dfs):
+    """
+    Loop over a list of DataFrames and print their info.
+    
+    Parameters:
+    dfs (list): A list of pandas DataFrames.
+    """
+    # Set display options for better readability
+    pd.set_option('display.max_columns', None)  # Show all columns
+    pd.set_option('display.width', 1000)        # Increase width to avoid line breaks
+
+    for df_name, df in dfs:
+        print(f"\n{df_name} Info:")
+        df.info()
+
+# Categorizing data types 
+def column_catagorize(df):
+    # Categorize columns based on data types
+    column_categories = {
+        'numeric': [],
+        'categorical': [],
+        'datetime': [],
+        'object': []
+    }
+
+    # Iterate over columns and categorize them
+    for column in df.columns:
+        if pd.api.types.is_numeric_dtype(df[column]):
+            column_categories['numeric'].append(column)
+        elif isinstance(df[column].dtype, pd.CategoricalDtype):
+            column_categories['categorical'].append(column)
+        elif pd.api.types.is_datetime64_any_dtype(df[column]):
+            column_categories['datetime'].append(column)
+        elif pd.api.types.is_object_dtype(df[column]):
+            column_categories['object'].append(column)
+
+    # Print categorized columns
+    for category, columns in column_categories.items():
+        print(f"\n {category.capitalize()} columns: {columns} ")
+    
+    return column_categories
+
+
+
+# Converting to Categorical 
+def to_categorical(df, columns_to_convert):
+    # Convert to categorical data type
+    for column in columns_to_convert:
+        df[column] = df[column].astype('category')
+
+
+
+# Listing Missing values 
+def missing_values_table(df):
+    # Total missing values
+    mis_val = df.isnull().sum()
     
 
-    def missing_data_summary(self, data) -> pd.DataFrame:
-        """
-        Returns a summary of columns with missing data, including count and percentage of missing values.
+    # Get the count of non-null values for each column
+    non_null_counts = df.notnull().sum()
 
-        Returns:
-            pd.DataFrame: A DataFrame with columns 'Missing Count' and 'Percentage (%)' for columns with missing values.
-        """
-        # Total missing values per column
-        missing_data = data.isnull().sum()
-        
-        # Filter only columns with missing values greater than 0
-        missing_data = missing_data[missing_data > 0]
-        
-        # Calculate the percentage of missing data
-        missing_percentage = (missing_data / len(data)) * 100
-        
-        # Combine the counts and percentages into a DataFrame
-        missing_df = pd.DataFrame({
-            'Missing Count': missing_data, 
-            'Percentage (%)': missing_percentage
-        })
-        
-        # Sort by percentage of missing data
-        missing_df = missing_df.sort_values(by='Percentage (%)', ascending=False)
-        
-        return missing_df
+    # Percentage of missing values
+    mis_val_percent = 100 * df.isnull().sum() / len(df)
 
-   
-    def check_data_types(self):
-        """
-        Function to check and compare the data types of columns in both training and test datasets.
-        
-        Args:
-        train_data (pd.DataFrame): The training dataset.
-        test_data (pd.DataFrame): The test dataset.
-        
-        Returns:
-        None
-        """
-        # Check data types of the training dataset
-        print("Training Dataset Data Types:\n")
-        print(self.train_data.dtypes)
-        print("\n" + "="*50 + "\n")
-        
-        # Check data types of the test dataset
-        print("Test Dataset Data Types:\n")
-        print(self.test_data.dtypes)
-        print("\n" + "="*50 + "\n")
-        
-        # Check for differences in column names and data types
-        print("Differences in column names and data types between training and test datasets:\n")
-        train_dtypes = self.train_data.dtypes
-        test_dtypes = self.test_data.dtypes
-        
-        for column in train_dtypes.index:
-            if column in test_dtypes.index:
-                if train_dtypes[column] != test_dtypes[column]:
-                    print(f"Data type mismatch for column '{column}':")
-                    print(f"Train: {train_dtypes[column]}, Test: {test_dtypes[column]}")
-                    print("-" * 50)
-            else:
-                print(f"Column '{column}' is present in training data but missing in test data.")
-        
-        for column in test_dtypes.index:
-            if column not in train_dtypes.index:
-                print(f"Column '{column}' is present in test data but missing in training data.")
+    # dtype of missing values
+    mis_val_dtype = df.dtypes
     
-    def check_outlier(self, variables):
-        # Create boxplots for outlier detection
-        plt.figure(figsize=(15, 4))
-        for i, var in enumerate(variables, 1):
-            plt.subplot(1, len(variables), i)
-            sns.boxplot(y=self.train_data[var])
-            plt.title(f'Boxplot of {var}')
-            plt.xlabel('')
+    # missing values unique number
+    unique_counts = df.nunique()
+    # Make a table with the results
+    mis_val_table = pd.concat([mis_val, mis_val_percent, mis_val_dtype, non_null_counts, unique_counts], axis=1)
 
-        plt.tight_layout()
-        plt.show()
+    # Rename the columns
+    mis_val_table_ren_columns = mis_val_table.rename(
+    columns={0: 'Missing Values', 1: '% of Total Values', 2: 'Dtype',3: 'Values', 4: 'Unique Values'})
+
+    # Sort the table by percentage of missing descending
+    mis_val_table_ren_columns = mis_val_table_ren_columns[
+        mis_val_table_ren_columns.iloc[:, 1] != 0].sort_values(
+        '% of Total Values', ascending=False).round(1)
+
+    # Print some summary information
+    print("Your selected dataframe has " + str(df.shape[1]) + " columns.\n"
+          "There are " + str(mis_val_table_ren_columns.shape[0]) +
+          " columns that have missing values.")
+    
+
+    # Return the dataframe with missing information
+    return mis_val_table_ren_columns
+
+
+
+# Listing Non missing values 
+def non_missing_values_table(df):
+    # Identify non-missing value columns
+    non_missing_columns = df.columns[df.notnull().all()]
+
+    # Prepare data for the summary table
+    summary_data = {
+        'Column Name': [],
+        'Data Type': [],
+        'Total Values': [],
+        'Unique Values': []
+    }
+
+    # Populate the summary data
+    for column in non_missing_columns:
+        summary_data['Column Name'].append(column)
+        summary_data['Data Type'].append(df[column].dtype)
+        summary_data['Total Values'].append(len(df[column]))
+        summary_data['Unique Values'].append(df[column].nunique())
+
+    # Create a DataFrame from the summary data
+    summary_df = pd.DataFrame(summary_data)
+
+    # Print some summary information
+    print("Your selected DataFrame has " + str(df.shape[1]) + " columns.\n"
+          "There are " + str(summary_df.shape[0]) +
+          " columns that have no missing values.")
+
+    # Return the summary DataFrame
+    return summary_df
+
+
+
+
+# Function to detect outliers using IQR and count them
+def count_outliers_iqr(df):
+    outlier_counts = {}
+    lower_bounds = {}
+    upper_bounds = {}
+
+    for column in df.select_dtypes(include=['number']).columns:
+        Q1 = df[column].quantile(0.25)
+        Q3 = df[column].quantile(0.75)
+        IQR = Q3 - Q1
+        
+        # Define bounds for outliers
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        
+        # Count outliers
+        outlier_count = df[(df[column] < lower_bound) | (df[column] > upper_bound)].shape[0]
+        
+        outlier_counts[column] = outlier_count
+        lower_bounds[column] = lower_bound
+        upper_bounds[column] = upper_bound
+    
+    return lower_bounds, upper_bounds, outlier_counts
+
+
+
+# Plotting Outliers using box plot 
+def plot_box_outliers(dff, lower_bounds, upper_bounds, outlier_counts):
+    # Create box plots for columns with outliers
+    # Prepare to create box plots for columns with outliers
+    num_columns = len([column for column, count in outlier_counts.items() if count > 0])
+    num_rows = (num_columns + 1) // 2  # Calculate the number of rows needed
+
+    fig, axes = plt.subplots(num_rows, 2, figsize=(12, num_rows * 5))  # Create subplots
+
+    # Flatten the axes array for easy iteration
+    axes = axes.flatten()
+
+    # Create box plots for columns with outliers
+    plot_index = 0
+    for column, count in outlier_counts.items():
+        if count > 0:  # Only plot columns with outliers
+            sns.boxplot(x=dff[column], ax=axes[plot_index], color='skyblue')
+            
+            # Adding lines for upper and lower bounds
+            axes[plot_index].axvline(x=upper_bounds[column], color='r', linestyle='--', label='Upper Bound')
+            axes[plot_index].axvline(x=lower_bounds[column], color='g', linestyle='--', label='Lower Bound')
+            
+            axes[plot_index].set_title(f'Box Plot of {column} with Outlier Bounds')
+            axes[plot_index].set_xlabel(column)
+            axes[plot_index].legend()
+            
+            plot_index += 1
+
+    # Hide any unused subplots
+    for i in range(plot_index, len(axes)):
+        fig.delaxes(axes[i])
+
+    plt.tight_layout()  # Adjust layout for better spacing
+    plt.show()
+
+
+
+
+# Plotting outliers using sactter plot 
+def plot_scatter_outliers(dff, lower_bounds, upper_bounds, outlier_counts):
+    # Prepare to create scatter plots for columns with outliers
+    num_columns = len([column for column, count in outlier_counts.items() if count > 0])
+    num_rows = (num_columns + 1) // 2  # Calculate the number of rows needed
+
+    fig, axes = plt.subplots(num_rows, 2, figsize=(12, num_rows * 5))  # Create subplots
+
+    # Flatten the axes array for easy iteration
+    axes = axes.flatten()
+
+    # Create scatter plots for columns with outliers
+    plot_index = 0
+    for column, count in outlier_counts.items():
+        if count > 0:  # Only plot columns with outliers
+            axes[plot_index].scatter(dff.index, dff[column], color='skyblue', label='Data Points')
+            
+            # Adding lines for upper and lower bounds
+            axes[plot_index].axhline(y=upper_bounds[column], color='r', linestyle='--', label='Upper Bound')
+            axes[plot_index].axhline(y=lower_bounds[column], color='g', linestyle='--', label='Lower Bound')
+            
+            axes[plot_index].set_title(f'Scatter Plot of {column} with Outlier Bounds')
+            axes[plot_index].set_xlabel('Index')
+            axes[plot_index].set_ylabel(column)
+            axes[plot_index].legend()
+            
+            plot_index += 1
+
+    # Hide any unused subplots
+    for i in range(plot_index, len(axes)):
+        fig.delaxes(axes[i])
+
+    plt.tight_layout()  # Adjust layout for better spacing
+    plt.show()
+
+
+
+
+
+
